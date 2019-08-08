@@ -113,6 +113,13 @@ func SplitFileBySize(filePath string, splitSize int64) (fsi FileSummaryInfo, err
 // 分割文件
 // 根据指定的大小，将文件进行分割
 func createSplitFile(filePath string, fileReadBufSize int, sFileNum int, begin int64, end int64, wg *sync.WaitGroup) int {
+	defer func() { //异常处理
+		err := recover()
+		if err != nil {
+			mylog.MyError.Printf("createSplitFile （%s: %d） error: %v \n", filePath, sFileNum, err)
+			return
+		}
+	}()
 
 	//打开源文件，准备提取数据，生成切分文件
 	file, err := os.OpenFile(filePath, os.O_RDWR, 0666)

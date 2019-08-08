@@ -175,6 +175,13 @@ func main() {
 // 请求子数据文件
 func downloadSplitFile(remote string, fileName string, fileSEQ int, sessionId string, wg *sync.WaitGroup) {
 	defer wg.Done()
+	defer func() { //异常处理
+		err := recover()
+		if err != nil {
+			mylog.MyError.Printf("downloadSplitFile（%s: %d） error: %v \n", fileName, fileSEQ, err)
+			return
+		}
+	}()
 
 	var data = make([]byte, 1024*100) //创建读取服务端信息的切片
 

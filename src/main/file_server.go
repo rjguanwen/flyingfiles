@@ -63,6 +63,14 @@ func main() {
 
 func dealRequest(con net.Conn) {
 	mylog.MyInfo.Println("=== 开始 == dealRequest ...")
+	defer func() { //异常处理
+		err := recover()
+		if err != nil {
+			mylog.MyError.Printf("dealRequest error: %v \n", err)
+			return
+		}
+	}()
+
 	var (
 		reqFlag string
 		data    = make([]byte, 1024*1024) //用于保存接收的数据的切片
