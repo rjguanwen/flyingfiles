@@ -24,6 +24,24 @@ func BytesToInt(b []byte) int {
 	return int(x)
 }
 
+func Int64ToBytes(i int64) []byte {
+	var buf = make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, uint64(i))
+	return buf
+}
+
+func BytesToInt64(buf []byte) int64 {
+	return int64(binary.BigEndian.Uint64(buf))
+}
+
+//// int64
+//func Int64ToByte(num int64) []byte {
+//	var buffer bytes.Buffer
+//	err := binary.Write(&buffer, binary.BigEndian, num)
+//	CheckErr(err)
+//	return buffer.Bytes()
+//}
+
 // 组织子文件传输结束标准
 func GetSplitFileOverFlag(sessionId string) (overFlag []byte, length int) {
 	overFlag = []byte("<<====SplitFileSendOver=" + sessionId + "=")
