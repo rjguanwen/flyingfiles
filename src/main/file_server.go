@@ -143,14 +143,16 @@ func dealRequest(con net.Conn) {
 		rSessionId := sfrp.SessionID
 		sessionContentGet, found := sessionCache.Get(rSessionId)
 		if !found {
-			con.Write([]byte(strconv.Itoa(myutil.NoPermission)))
+			//con.Write([]byte(strconv.Itoa(myutil.NoPermission)))
+			con.Write(myfileutils.NewRespDataHead(myutil.NoPermission, 0).ToByte())
 			mylog.MyError.Println("缓存中会话标识未找到，sessionId:", rSessionId)
 			return
 		}
 		// 类型断言
 		sessionContent, ok := sessionContentGet.(myutil.SessionContent)
 		if !ok {
-			con.Write([]byte(strconv.Itoa(myutil.ServerError)))
+			//con.Write([]byte(strconv.Itoa(myutil.ServerError)))
+			con.Write(myfileutils.NewRespDataHead(myutil.ServerError, 0).ToByte())
 			mylog.MyError.Println("SessionContent类型转换错误:", ok)
 			return
 		}
@@ -161,19 +163,22 @@ func dealRequest(con net.Conn) {
 		fileNameS := sessionContent.FileName // 服务端缓存的文件名
 		remoteIPS := sessionContent.RemoteIp // 服务端缓存的客户端 IP 地址
 		if fileNameC != fileNameS {          // 文件名称不一致
-			con.Write([]byte(strconv.Itoa(myutil.TokenError)))
+			//con.Write([]byte(strconv.Itoa(myutil.TokenError)))
+			con.Write(myfileutils.NewRespDataHead(myutil.TokenError, 0).ToByte())
 			mylog.MyError.Println("文件名与令牌不一致，拒绝服务！", ok)
 			return
 		}
 		if remoteIPC != remoteIPS { // IP 地址名称不一致
-			con.Write([]byte(strconv.Itoa(myutil.TokenError)))
+			//con.Write([]byte(strconv.Itoa(myutil.TokenError)))
+			con.Write(myfileutils.NewRespDataHead(myutil.TokenError, 0).ToByte())
 			mylog.MyError.Println("IP地址不一致，怀疑令牌被伪造，拒绝服务！", ok)
 			return
 		}
 		// 令牌检查通过，从指定子文件读取数据传输给客户端
 		sendSplitFile2Client(con, fileNameC, splitFileSeq_c, rSessionId)
 	} else { // 如果请求类型未知
-		con.Write([]byte(strconv.Itoa(myutil.RequestError)))
+		//con.Write([]byte(strconv.Itoa(myutil.RequestError)))
+		con.Write(myfileutils.NewRespDataHead(myutil.RequestError, 0).ToByte())
 		mylog.MyError.Println("请求类型错误，reqFlagInt:", reqFlagInt)
 		return
 	}
@@ -184,16 +189,16 @@ func dealRequest(con net.Conn) {
 // 首先检查所选子文件是否存在，如果不存在则向客户端返回异常
 // 如果文件存在，则读取文件内容，向客户端发送
 func sendSplitFile2Client(con net.Conn, fileName string, splitFileSeq int, sessionId string) {
+	//mylog.MyTrace.Printf("sendSplitFile2Client - begin - %s_%d ！", fileName, splitFileSeq)
 	splitFileDirPath := path.Join(myfileutils.AbsPath("file_store/out/"), fileName+"_info")
 	splitFilePath := path.Join(splitFileDirPath, fileName+"_"+strconv.Itoa(splitFileSeq))
 	if !myfileutils.IsFileExist(splitFilePath) { // 如果子文件不存在
-		con.Write([]byte(strconv.Itoa(myutil.SplitFileNotFound)))
+		//con.Write([]byte(strconv.Itoa(myutil.SplitFileNotFound)))
+		con.Write(myfileutils.NewRespDataHead(myutil.SplitFileNotFound, 0).ToByte())
 		mylog.MyError.Println("客户端请求的子文件不存在：", splitFilePath)
 		return
 	}
-	// 开始读取并传输子文件数据到客户端
-	con.Write([]byte(strconv.Itoa(myutil.SplitFileData)))
-
+	//mylog.MyTrace.Printf("openFile - begin - %s_%d ！", fileName, splitFileSeq)
 	//打开待发送文件，准备发送文件数据
 	file, err := os.OpenFile(splitFilePath, os.O_RDWR, 0666)
 	defer file.Close()
@@ -207,7 +212,11 @@ func sendSplitFile2Client(con net.Conn, fileName string, splitFileSeq int, sessi
 		return
 	}
 	var fileSize int64 = fileStat.Size() // 文件大小
-
+	//mylog.MyTrace.Printf("Get fileSize - %s_%d : %d！", fileName, splitFileSeq, fileSize)
+	// 开始读取并传输子文件数据到客户端
+	//con.Write([]byte(strconv.Itoa(myutil.SplitFileData)))
+	con.Write(myfileutils.NewRespDataHead(myutil.SplitFileData, fileSize).ToByte())
+	//mylog.MyTrace.Printf("写入响应头 - %s_%d ！", fileName, splitFileSeq)
 	var bufsize = 1024 * 50      //单次发送数据的大小
 	buf := make([]byte, bufsize) //创建用于保存读取文件数据的切片
 
@@ -215,7 +224,7 @@ func sendSplitFile2Client(con net.Conn, fileName string, splitFileSeq int, sessi
 
 	var begin, end = int64(0), fileSize // 文件读取的开始与结束
 	var msg = make([]byte, 1024)        //创建读取客户端返回信息的切片
-
+	//mylog.MyTrace.Printf("开始读取数据并发送 - %s_%d ！", fileName, splitFileSeq)
 	//读取并发送数据
 	for i := begin; int64(i) < end; i += int64(bufsize) {
 		length, err := file.Read(buf) //读取数据到切片中
@@ -227,6 +236,9 @@ func sendSplitFile2Client(con net.Conn, fileName string, splitFileSeq int, sessi
 		//判断读取的数据长度与切片的长度是否相等，如果不相等，表明文件读取已到末尾
 		if length == bufsize {
 			sendDataNum, err := con.Write(buf)
+			//if splitFileSeq == 13{
+			mylog.MyError.Printf("向客户端发送 %s_%d 数据，长度为：%d \n", fileName, splitFileSeq, sendDataNum)
+			//}
 			if err != nil {
 				mylog.MyError.Printf("向客户端发送数据错误: %d: %v \n", sendDataNum, err)
 				return
@@ -234,17 +246,18 @@ func sendSplitFile2Client(con net.Conn, fileName string, splitFileSeq int, sessi
 			sendDtaTolNum += sendDataNum
 		} else {
 			sendDataNum, err := con.Write(buf[:length])
+			//if splitFileSeq == 13{
+			mylog.MyError.Printf("向客户端发送 %s_%d 数据，长度为：%d \n", fileName, splitFileSeq, sendDataNum)
+			//}
 			if err != nil {
-				mylog.MyError.Println("向客户端发送数据错误: %d: %v \n", sendDataNum, err)
+				mylog.MyError.Printf("向客户端发送数据错误: %d: %v \n", sendDataNum, err)
 				return
 			}
 			sendDtaTolNum += sendDataNum
 		}
 	}
-	//文件发送完成，通知客户端，并等待客端反馈接收完成
-	overFlag, _ := myutil.GetSplitFileOverFlag(sessionId)
-	mylog.MyInfo.Println("======>", splitFileSeq, "-", string(overFlag))
-	con.Write(overFlag)
+	mylog.MyTrace.Printf("%s_%d 数据发送完成，等待客户端反馈！\n", fileName, splitFileSeq)
+	//文件发送完成，等待客端反馈接收完成
 	lengthMsg, err := con.Read(msg) //获取客户端返回信息
 	if err != nil {
 		mylog.MyError.Println("读取客户端返回信息错误：", lengthMsg, err)

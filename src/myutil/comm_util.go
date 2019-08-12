@@ -42,13 +42,6 @@ func BytesToInt64(buf []byte) int64 {
 //	return buffer.Bytes()
 //}
 
-// 组织子文件传输结束标准
-func GetSplitFileOverFlag(sessionId string) (overFlag []byte, length int) {
-	overFlag = []byte("<<====SplitFileSendOver=" + sessionId + "=")
-	length = len(overFlag)
-	return
-}
-
 // 快速合并字节数组
 func BytesCombine(pBytes ...[]byte) []byte {
 	return bytes.Join(pBytes, []byte(""))

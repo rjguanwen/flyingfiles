@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -28,15 +27,13 @@ func init() {
 func main() {
 	//mylog.MyInfo.Println(Request4File)
 	var (
-		host          = "127.0.0.1"               //服务端IP
-		port          = "9090"                    //服务端端口
-		remote        = host + ":" + port         //构造连接串
-		fileName      = "weibo_data.txt"          // 请求数据文件名
-		mergeFileName = "download_weibo_data.txt" //本地保存数据文件名
-		//fileName = "机器学习.zip" // 请求数据文件名
-		//mergeFileName = "download_机器学习.zip"   //本地保存数据文件名
-		//fileName = "数据驱动1008.pptx" // 请求数据文件名
-		//mergeFileName = "download_数据驱动1008.pptx"   //本地保存数据文件名
+		host   = "127.0.0.1"       //服务端IP
+		port   = "9090"            //服务端端口
+		remote = host + ":" + port //构造连接串
+		//fileName      = "weibo_data.txt"          // 请求数据文件名
+		//mergeFileName = "download_weibo_data.txt" //本地保存数据文件名
+		fileName      = "机器学习.zip"          // 请求数据文件名
+		mergeFileName = "download_机器学习.zip" //本地保存数据文件名
 	)
 
 	//获取参数信息。
@@ -227,7 +224,7 @@ func doDownloadTasks(remote string, fileName string, fileSEQ int, sessionId stri
 		if isSuccess {
 			result = "==>" + fileName + ": " + strconv.Itoa(i) + "<== has download."
 		} else {
-			result = "==>" + fileName + ": " + strconv.Itoa(i) + "<== download error!"
+			result = "==>" + fileName + ": " + strconv.Itoa(i) + "<== download error!!!"
 		}
 		resch <- result
 	}
@@ -236,8 +233,8 @@ func doDownloadTasks(remote string, fileName string, fileSEQ int, sessionId stri
 
 // 请求子数据文件
 func downloadSplitFile(remote string, fileName string, fileSEQ int, sessionId string) (isSuccess bool) {
-	//func downloadSplitFile(remote string, fileName string, fileSEQ int, sessionId string, wg *sync.WaitGroup) {
-	//defer wg.Done()
+	//func downloadSplitFile(remote string, fileName string, fileSEQ int, sessionId string, wg *sync.WaitGroup) (isSuccess bool){
+	//	defer wg.Done()
 
 	var data = make([]byte, 1024*100) //创建读取服务端信息的切片
 
@@ -283,74 +280,97 @@ func downloadSplitFile(remote string, fileName string, fileSEQ int, sessionId st
 	defer tmpFile.Close()
 
 	mylog.MyTrace.Println("开始子文件数据接收...: ", fileSEQ)
-	overFlag, overFlagLength := myutil.GetSplitFileOverFlag(sessionId) // 子文件传输完成标志
-	j := 0                                                             // 标记接收数据的次数
-	var isTheEndData = false                                           // 标记收到的数据是不是最后一段数据
-	for {                                                              // 循环接收服务端发送回的数据
+	//overFlag, overFlagLength := myutil.GetSplitFileOverFlag(sessionId) // 子文件传输完成标志
+	var isRespHeadRecived = false // 响应头是否已收到
+
+	var respFlagInt int
+	var dataTolLength int64
+	var dataHasWrote int64 = 0
+	var tmpRespHeadBytes = make([]byte, 0) // 用来缓存响应头，以防止数据被传输过程中被截断
+	//var tmpRespHeadBytesOldLength int
+	var tmpDataBytes = make([]byte, 0)
+	for { // 循环接收服务端发送回的数据
 		lengthh, err := con.Read(data) //获取服务器返回信息
-		/*
-		 * 此处存在严重bug，择机修改之！！！
-		 */
-		// 判断接收到的数据是否含有overFlag
-		if isSplitFileOver(overFlag, overFlagLength, data, lengthh) {
-			lengthh = lengthh - overFlagLength
-			isTheEndData = true
-		}
-		// 接收到的数据包个数 + 1
 		if err != nil {
 			mylog.MyInfo.Println("读取服务器数据长度：", lengthh)
 			mylog.MyError.Println("读取服务器数据错误：", err)
 			return
 		}
-		if j == 0 { // 如果是第一次接收，需要判断服务器响应是否为文件内容
-			respFlag := string(data[0]) //获取请求标志位
-			//mylog.MyInfo.Println("respFlag:", respFlag)
-			respFlagInt, _ := strconv.Atoi(respFlag)
-			// 根据请求标志位，进行不同响应
-			if respFlagInt == myutil.SplitFileData { // 子文件数据
-				tmpFile.Write(data[1:lengthh]) // 向文件写入数据
-			} else if respFlagInt == myutil.NoPermission { // 没有权限，一般是令牌过期或令牌为伪造
-				mylog.MyError.Println("没有权限，一般是令牌过期或令牌为伪造：", respFlag)
-				return
-			} else if respFlagInt == myutil.ServerError { // 服务器错误
-				mylog.MyError.Println("服务器错误：", respFlag)
-				return
-			} else if respFlagInt == myutil.TokenError { // 令牌校验不通过，一般为文件名或IP地址被篡改
-				mylog.MyError.Println("令牌校验不通过，一般为文件名或IP地址被篡改：", respFlag)
-				return
-			} else if respFlagInt == myutil.RequestError { // 请求错误，请求码未知
-				mylog.MyError.Println("请求错误，请求码未知：", respFlag)
-				return
-			} else if respFlagInt == myutil.SplitFileNotFound { // 所请求的子文件未找到
-				mylog.MyError.Println("所请求的子文件未找到：", respFlag)
-				return
+		if !isRespHeadRecived { // 如果尚未收到响应头
+			mylog.MyTrace.Printf(":: %s_%d 判断响应头开始...", fileName, fileSEQ)
+			//tmpRespHeadBytesOldLength = len(tmpRespHeadBytes) // 拼接前的 tmpRespHeadBytes 长度
+			tmpRespHeadBytes = append(tmpRespHeadBytes, data[:lengthh]...) //将接收到的数据拼接到 tmpRespHeadBytes
+			tmpRespHeadBytesNewLength := len(tmpRespHeadBytes)             // 拼接后的 tmpRespHeadBytes 长度
+			//mylog.MyError.Println("--------->>>>", tmpRespHeadBytes)
+			if tmpRespHeadBytesNewLength >= myfileutils.ConstRDHLength {
+				//mylog.MyError.Println("==========>>>>", tmpRespHeadBytes)
+				rdh := myfileutils.RespDataHeadFromBtye(tmpRespHeadBytes[:myfileutils.ConstRDHLength])
+				mylog.MyTrace.Printf(":: %s_%d 响应头---> %s", fileName, fileSEQ, rdh.ToString())
+				respFlagInt = int(rdh.RespFlag)
+				dataTolLength = rdh.DataLength
+				//data = data[myfileutils.ConstRDHLength-tmpRespHeadBytesOldLength: lengthh] // 剔除掉响应头
+				//lengthh = len(data)
+				//if lengthh > myfileutils.ConstRDHLength-tmpRespHeadBytesOldLength {
+				//	tmpDataBytes = data[myfileutils.ConstRDHLength-tmpRespHeadBytesOldLength: lengthh] // 本次接收数据中的内容部分
+				//}
+				tmpDataBytes = tmpRespHeadBytes[myfileutils.ConstRDHLength:tmpRespHeadBytesNewLength]
+
+				//fmt.Printf("--------（%s_%d）总长度 %d\n", fileName, fileSEQ, lengthh)
+				//fmt.Printf("--------（%s_%d）tmpOld长度 %d\n", fileName, fileSEQ, tmpRespHeadBytesOldLength)
+				//fmt.Printf("--------（%s_%d）tmpBytes长度 %d\n", fileName, fileSEQ, len(tmpDataBytes))
+				//fmt.Printf("--------（%s_%d）tmpBytes内容 %d\n", fileName, fileSEQ, tmpDataBytes)
+
+				mylog.MyTrace.Printf(":: %s_%d -----> %d", fileName, fileSEQ, lengthh)
+				mylog.MyTrace.Printf(":: %s_%d 判断响应头已获取...", fileName, fileSEQ)
+				isRespHeadRecived = true
 			} else {
-				mylog.MyError.Println("服务器返回标志位无法识别：", respFlag)
-				return
+				mylog.MyTrace.Printf(":: %s_%d 判断响应头未获取...", fileName, fileSEQ)
+				mylog.MyWarning.Println("警告：接收到的splitFile响应数据长度为：", tmpRespHeadBytesNewLength)
+				continue
 			}
 		} else {
-			tmpFile.Write(data[0:lengthh])
+			tmpDataBytes = data[:lengthh]
 		}
-		j++
-		if isTheEndData { // 如果是最后一段数据，则跳出循环
-			break
+		tmpDataBytesLength := len(tmpDataBytes)
+
+		if respFlagInt == myutil.SplitFileData { // 子文件数据
+			//if fileSEQ == 13{
+			//	mylog.MyTrace.Printf("%s_%d 数据开始，数据长度：\n", fileName, fileSEQ, lengthh)
+			//}
+			tmpFile.Write(tmpDataBytes[:tmpDataBytesLength]) // 向文件写入数据
+			dataHasWrote += int64(tmpDataBytesLength)
+			if dataHasWrote == dataTolLength { // 接收到的数据等于发送的数据
+				mylog.MyTrace.Printf("%s_%d 数据接收成功完成！\n", fileName, fileSEQ)
+				break
+			}
+			if dataHasWrote > dataTolLength { // 如果发送此种情况，说明有大问题了！
+				mylog.MyError.Printf("严重错误：%s_%d 接收到的数据 >> 发送数据！\n", fileName, fileSEQ)
+				return
+			}
+		} else if respFlagInt == myutil.NoPermission { // 没有权限，一般是令牌过期或令牌为伪造
+			mylog.MyError.Println("没有权限，一般是令牌过期或令牌为伪造：", respFlagInt)
+			return
+		} else if respFlagInt == myutil.ServerError { // 服务器错误
+			mylog.MyError.Println("服务器错误：", respFlagInt)
+			return
+		} else if respFlagInt == myutil.TokenError { // 令牌校验不通过，一般为文件名或IP地址被篡改
+			mylog.MyError.Println("令牌校验不通过，一般为文件名或IP地址被篡改：", respFlagInt)
+			return
+		} else if respFlagInt == myutil.RequestError { // 请求错误，请求码未知
+			mylog.MyError.Println("请求错误，请求码未知：", respFlagInt)
+			return
+		} else if respFlagInt == myutil.SplitFileNotFound { // 所请求的子文件未找到
+			mylog.MyError.Println("所请求的子文件未找到：", respFlagInt)
+			return
+		} else {
+			mylog.MyError.Println("服务器返回标志位无法识别：", respFlagInt)
+			return
 		}
 	}
+	mylog.MyTrace.Printf("------->> %s_%d 数据接收完成并跳出 for 循环！\n", fileName, fileSEQ)
 	// 将子文件数据接收完成信息告知服务端
 	con.Write([]byte("OK!"))
 	mylog.MyInfo.Println(fileName + "-" + strconv.Itoa(fileSEQ) + " 数据接收完成！")
 	isSuccess = true
 	return
-}
-
-// 根据接收到的 []byte 判断子文件数据传输是否完成
-func isSplitFileOver(overFlag []byte, overFlagLength int, data []byte, dataLength int) bool {
-	if dataLength < overFlagLength {
-		return false
-	} else {
-		// 这个5比较诡异，貌似有时候发送过来的数据会被污染一部分，因此去掉前5个位再比较
-		// 这个办法太烂了，先凑合一下，回头就改掉
-		return bytes.Equal(overFlag[5:], data[dataLength-overFlagLength+5:dataLength])
-		//return string(overFlag) == string(data[dataLength-overFlagLength:dataLength])
-	}
 }
