@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-var splitSize = int64(1024 * 1024 * 1)
+var splitSize = int64(1024 * 1024 * 10) // 拆分文件大小
 var sessionCache *cache.Cache
 
 func init() {
@@ -41,7 +41,7 @@ func main() {
 	defer lis.Close()
 
 	if err != nil {
-		mylog.MyInfo.Println("Port 9090 Listen Error: ", remote)
+		mylog.MyError.Println("Port 9090 Listen Error: ", remote)
 		os.Exit(-1)
 	}
 
@@ -49,7 +49,7 @@ func main() {
 	for {
 		conn, err := lis.Accept()
 		if err != nil {
-			mylog.MyInfo.Println("Client Connect Error: ", err.Error())
+			mylog.MyError.Println("Client Connect Error: ", err.Error())
 			// os.Exit(0)
 			continue
 		}
@@ -237,7 +237,7 @@ func sendSplitFile2Client(con net.Conn, fileName string, splitFileSeq int, sessi
 		if length == bufsize {
 			sendDataNum, err := con.Write(buf)
 			//if splitFileSeq == 13{
-			mylog.MyError.Printf("向客户端发送 %s_%d 数据，长度为：%d \n", fileName, splitFileSeq, sendDataNum)
+			//mylog.MyInfo.Printf("向客户端发送 %s_%d 数据，长度为：%d \n", fileName, splitFileSeq, sendDataNum)
 			//}
 			if err != nil {
 				mylog.MyError.Printf("向客户端发送数据错误: %d: %v \n", sendDataNum, err)
@@ -247,7 +247,7 @@ func sendSplitFile2Client(con net.Conn, fileName string, splitFileSeq int, sessi
 		} else {
 			sendDataNum, err := con.Write(buf[:length])
 			//if splitFileSeq == 13{
-			mylog.MyError.Printf("向客户端发送 %s_%d 数据，长度为：%d \n", fileName, splitFileSeq, sendDataNum)
+			//mylog.MyInfo.Printf("向客户端发送 %s_%d 数据，长度为：%d \n", fileName, splitFileSeq, sendDataNum)
 			//}
 			if err != nil {
 				mylog.MyError.Printf("向客户端发送数据错误: %d: %v \n", sendDataNum, err)
