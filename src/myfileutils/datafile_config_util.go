@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/viper"
 	"os"
 	"path"
-	"rjguanwen.cn/flyingfiles/src/mylog"
+	"rjguanwen.cn/flyingfiles/src/fflog"
 )
 
 // 结构体，文件摘要
@@ -60,7 +60,7 @@ func ReadConfigYAML(configPath string, configName string) (hasFsi bool, fsi File
 	hasFsi = true
 	err = v.ReadInConfig() // 根据以上配置读取加载配置文件
 	if err != nil {
-		mylog.MyError.Fatalln("读取配置文件错误：", err) // 读取配置文件失败致命错误
+		fflog.Errorln("读取配置文件错误：", err) // 读取配置文件失败致命错误
 	}
 
 	fsi = FileSummaryInfo{
@@ -78,7 +78,7 @@ func WriteFileConfigYAML(fileName string, fileInfo FileSummaryInfo) {
 	if !IsFileExist(configDir) {                                        // 如果目录不存在，则创建
 		err := os.MkdirAll(configDir, os.ModePerm) // 创建子文件夹
 		if err != nil {
-			mylog.MyError.Println("MkDir configDir Error:", err)
+			fflog.Errorln("MkDir configDir Error:", err)
 			return
 		}
 	}
@@ -100,7 +100,7 @@ func WriteConfigYAML(configFile string, fileInfo FileSummaryInfo) {
 	v.SetDefault("SplitFilesMD5", fileInfo.SplitFilesMD5)
 
 	if err := v.WriteConfigAs(configFile + ".yaml"); err != nil {
-		mylog.MyError.Fatalln(err)
+		fflog.Errorln(err)
 	}
 }
 
@@ -109,7 +109,7 @@ func AbsPath(relFilepath string) string {
 	// 获取绝对路径
 	rootDir, err := os.Getwd()
 	if err != nil {
-		mylog.MyError.Fatalln("获取文件绝对路径失败：", err)
+		fflog.Errorln("获取文件绝对路径失败：", err)
 	}
 	//fmt.Println("==>" + rootDir)
 	absPath := path.Join(rootDir, relFilepath)
@@ -141,7 +141,7 @@ func IsFileReady(fileName string) (ready bool, fsi FileSummaryInfo) {
 		return
 	}
 	if err != nil {
-		mylog.MyError.Fatalln(fileName+"摘要信息读取异常。", err)
+		fflog.Errorln(fileName+"摘要信息读取异常。", err)
 		return
 	}
 	ready = true

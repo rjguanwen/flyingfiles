@@ -4,7 +4,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"rjguanwen.cn/flyingfiles/src/mylog"
+	"rjguanwen.cn/flyingfiles/src/fflog"
 	"strconv"
 	"sync"
 	"time"
@@ -31,12 +31,12 @@ func SplitFileBySize(filePath string, splitSize int64) (fsi FileSummaryInfo, err
 	//计算源文件可以被分割为几个子文件
 	fl, err := os.OpenFile(filePath, os.O_RDWR, 0666)
 	if err != nil {
-		mylog.MyError.Fatalln("Read File Error:", err)
+		fflog.Errorln("Read File Error:", err)
 		return
 	}
 	stat, err := fl.Stat() //获取文件状态
 	if err != nil {
-		mylog.MyError.Fatalln("File Stat Error:", err)
+		fflog.Errorln("File Stat Error:", err)
 	}
 	var fileSize int64
 	// 获取文件大小
@@ -79,7 +79,7 @@ func SplitFileBySize(filePath string, splitSize int64) (fsi FileSummaryInfo, err
 	sFileDir := path.Join(paths, fileName+"_info") // 获取子文件夹路径
 	md5, err := HashFileMd5(filePath)              // 获取源文件 MD5 码
 	if err != nil {
-		mylog.MyError.Fatalln("Get File MD5 Error:", err)
+		fflog.Errorln("Get File MD5 Error:", err)
 	}
 	var sFileMD5s []string = make([]string, splitFileNum)
 	// 获取子文件 MD5 码
@@ -87,7 +87,7 @@ func SplitFileBySize(filePath string, splitSize int64) (fsi FileSummaryInfo, err
 		sFilePath := path.Join(sFileDir, fileName+"_"+strconv.Itoa(i))
 		sFileMD5s[i], err = HashFileMd5(sFilePath) // 获取子文件 MD5 码
 		if err != nil {
-			mylog.MyError.Fatalln("Get sFile MD5 Error:", err)
+			fflog.Errorln("Get sFile MD5 Error:", err)
 		}
 	}
 
@@ -104,9 +104,9 @@ func SplitFileBySize(filePath string, splitSize int64) (fsi FileSummaryInfo, err
 	// 结束时间，用于统计耗时
 	endTime := time.Now().Unix()
 	spt := splitTime - beginTime
-	mylog.MyInfo.Printf("文件拆分耗时：%d 分 %d 秒 \n", spt/60, spt%60)
+	fflog.Infof("文件拆分耗时：%d 分 %d 秒 \n", spt/60, spt%60)
 	sit := endTime - splitTime
-	mylog.MyInfo.Printf("摘要信息生成耗时：%d 分 %d 秒 \n", sit/60, sit%60)
+	fflog.Infof("摘要信息生成耗时：%d 分 %d 秒 \n", sit/60, sit%60)
 	return
 }
 
@@ -116,7 +116,7 @@ func createSplitFile(filePath string, fileReadBufSize int, sFileNum int, begin i
 	defer func() { //异常处理
 		err := recover()
 		if err != nil {
-			mylog.MyError.Printf("createSplitFile （%s: %d） error: %v \n", filePath, sFileNum, err)
+			fflog.Errorf("createSplitFile （%s: %d） error: %v \n", filePath, sFileNum, err)
 			return
 		}
 	}()
@@ -125,7 +125,7 @@ func createSplitFile(filePath string, fileReadBufSize int, sFileNum int, begin i
 	file, err := os.OpenFile(filePath, os.O_RDWR, 0666)
 	defer file.Close()
 	if err != nil {
-		mylog.MyError.Fatalln(filePath+"，file opn error!", err)
+		fflog.Errorln(filePath+"，file opn error!", err)
 		return 0
 	}
 	file.Seek(begin, 0)                  //设定读取文件的位置
@@ -136,7 +136,7 @@ func createSplitFile(filePath string, fileReadBufSize int, sFileNum int, begin i
 	//fmt.Println("====>", sFileDir)
 	err = os.MkdirAll(sFileDir, os.ModePerm) // 创建子文件夹
 	if err != nil {
-		mylog.MyError.Fatalln("MkDir Error:", err)
+		fflog.Errorln("MkDir Error:", err)
 		return 0
 	}
 	sFilePath := path.Join(sFileDir, fileName+"_"+strconv.Itoa(sFileNum)) // 子文件路径
@@ -144,7 +144,7 @@ func createSplitFile(filePath string, fileReadBufSize int, sFileNum int, begin i
 	//fmt.Println("====>", sFilePath)
 	sFile, err := os.Create(sFilePath) // 创建子文件
 	if err != nil {
-		mylog.MyError.Fatalln("SplitFile Create Error:", err)
+		fflog.Errorln("SplitFile Create Error:", err)
 		return 0
 	}
 	defer sFile.Close()
@@ -154,7 +154,7 @@ func createSplitFile(filePath string, fileReadBufSize int, sFileNum int, begin i
 	for i := begin; i < end; i += int64(fileReadBufSize) {
 		length, err := file.Read(buf) //读取数据到切片中
 		if err != nil {
-			mylog.MyError.Fatalln("File Read Error:", err)
+			fflog.Errorln("File Read Error:", err)
 		}
 
 		//判断读取的数据长度与切片的长度是否相等，如果不相等，表明文件读取已到末尾
@@ -163,14 +163,14 @@ func createSplitFile(filePath string, fileReadBufSize int, sFileNum int, begin i
 			if int64(i)+int64(fileReadBufSize) >= end {
 				saveDataNum, err := sFile.Write(buf[:fileReadBufSize-int((int64(i)+int64(fileReadBufSize)-end))])
 				if err != nil {
-					mylog.MyError.Fatalln("sFile Write Error:", err)
+					fflog.Errorln("sFile Write Error:", err)
 					return 0
 				}
 				saveDtaTolNum += saveDataNum
 			} else {
 				saveDataNum, err := sFile.Write(buf)
 				if err != nil {
-					mylog.MyError.Fatalln("sFile Write Error:", err)
+					fflog.Errorln("sFile Write Error:", err)
 					return 0
 				}
 				saveDtaTolNum += saveDataNum
@@ -178,7 +178,7 @@ func createSplitFile(filePath string, fileReadBufSize int, sFileNum int, begin i
 		} else {
 			saveDataNum, err := sFile.Write(buf[:length])
 			if err != nil {
-				mylog.MyError.Fatalln("sFile Write Error:", err)
+				fflog.Errorln("sFile Write Error:", err)
 				return 0
 			}
 			saveDtaTolNum += saveDataNum
@@ -186,7 +186,7 @@ func createSplitFile(filePath string, fileReadBufSize int, sFileNum int, begin i
 	}
 	// 计数+1
 	wg.Done()
-	mylog.MyInfo.Println("sFile " + strconv.Itoa(sFileNum) + " has write data " + strconv.Itoa(saveDtaTolNum))
+	fflog.Infoln("sFile " + strconv.Itoa(sFileNum) + " has write data " + strconv.Itoa(saveDtaTolNum))
 	// 返回子文件写入的数据量
 	return saveDtaTolNum
 }

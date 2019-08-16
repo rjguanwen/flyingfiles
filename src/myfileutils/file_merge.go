@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 	"path"
-	"rjguanwen.cn/flyingfiles/src/mylog"
+	"rjguanwen.cn/flyingfiles/src/fflog"
 	"strconv"
 )
 
@@ -16,7 +16,7 @@ func MergeSplitFileAndCheck(fileName string, fsi FileSummaryInfo) (isOK bool, er
 	// 校验子文件下载是否完整
 	isOK, err = checkSplitFiles(fileName, fsi) //首先校验子文件下载是否OK
 	if !isOK {
-		mylog.MyError.Println("子文件校验出错：", err)
+		fflog.Errorln("子文件校验出错：", err)
 		return
 	}
 	// 组织子文件路径列表，完成合并
@@ -29,14 +29,14 @@ func MergeSplitFileAndCheck(fileName string, fsi FileSummaryInfo) (isOK bool, er
 	targetFilePath := path.Join(AbsPath("/file_store/in/"), fileName)
 	isOK, err = fileMerge(splitFilePaths, targetFilePath, false)
 	if !isOK {
-		mylog.MyError.Println("子文件校验出错：", err)
+		fflog.Errorln("子文件校验出错：", err)
 		return
 	}
 	// 校验目标文件MD5
 	targetFileMD5, err := HashFileMd5(targetFilePath)
 	if targetFileMD5 == fsi.MD5 {
 		isOK = true
-		mylog.MyInfo.Printf("数据文件（%s）校验通过！\n", fileName)
+		fflog.Infof("数据文件（%s）校验通过！\n", fileName)
 	}
 	return
 }
@@ -52,7 +52,7 @@ func checkSplitFiles(fileName string, fsi FileSummaryInfo) (isOK bool, err error
 		sFilePath := path.Join(splitFileDir, fileName+"_"+strconv.Itoa(i))
 		sFileMD5s[i], err = HashFileMd5(sFilePath) // 获取子文件 MD5 码
 		if err != nil {
-			mylog.MyError.Println("Get sFile MD5 Error:", err)
+			fflog.Errorln("Get sFile MD5 Error:", err)
 			return false, err
 		}
 	}
@@ -75,7 +75,7 @@ func fileMerge(sourceFileList []string, targetFilePath string, removeSourceFiles
 	// 打开目标文件
 	targetFile, err := os.OpenFile(targetFilePath, os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
-		mylog.MyError.Printf("Can not open file %s: %v", targetFilePath, err)
+		fflog.Errorf("Can not open file %s: %v", targetFilePath, err)
 		return false, err
 	}
 	bWriter := bufio.NewWriter(targetFile)
@@ -106,7 +106,7 @@ func fileMerge(sourceFileList []string, targetFilePath string, removeSourceFiles
 			err := os.Remove(sfPath)
 			if err != nil {
 				//如果删除失败则输出错误详细信息
-				mylog.MyError.Printf("文件合并完成，删除文件时发生错误：%s: %v", sfPath, err)
+				fflog.Errorf("文件合并完成，删除文件时发生错误：%s: %v", sfPath, err)
 				return false, err
 			}
 		}

@@ -23,3 +23,7 @@
 - 下载不成功的自动重试等功能尚未实现
 - 整体规划中还包括GUI，待有空再实现之
 - 日志随便胡乱一搞，有空再优化之
+
+## License  
+
+The [BSD 3-Clause license](http://opensource.org/licenses/BSD-3-Clause), the same as the [Go language](http://golang.org/LICENSE).
