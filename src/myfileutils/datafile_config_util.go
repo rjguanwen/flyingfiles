@@ -3,10 +3,10 @@ package myfileutils
 
 import (
 	"encoding/json"
+	"github.com/rjguanwen/flyingfiles/src/fflog"
 	"github.com/spf13/viper"
 	"os"
 	"path"
-	"rjguanwen.cn/flyingfiles/src/fflog"
 )
 
 // 结构体，文件摘要

@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/rjguanwen/flyingfiles/src/myutil"
 	"os"
-	"rjguanwen.cn/flyingfiles/src/myutil"
 )
 
 const (

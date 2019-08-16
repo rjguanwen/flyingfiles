@@ -3,10 +3,10 @@ package myfileutils
 import (
 	"bufio"
 	"fmt"
+	"github.com/rjguanwen/flyingfiles/src/fflog"
 	"io"
 	"os"
 	"path"
-	"rjguanwen.cn/flyingfiles/src/fflog"
 	"strconv"
 )
 

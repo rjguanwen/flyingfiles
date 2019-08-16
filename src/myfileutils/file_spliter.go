@@ -1,10 +1,10 @@
 package myfileutils
 
 import (
+	"github.com/rjguanwen/flyingfiles/src/fflog"
 	"os"
 	"path"
 	"path/filepath"
-	"rjguanwen.cn/flyingfiles/src/fflog"
 	"strconv"
 	"sync"
 	"time"

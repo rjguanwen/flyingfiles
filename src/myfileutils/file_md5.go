@@ -3,9 +3,9 @@ package myfileutils
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"github.com/rjguanwen/flyingfiles/src/fflog"
 	"io"
 	"os"
-	"rjguanwen.cn/flyingfiles/src/fflog"
 )
 
 // 计算文件的 md5 码
