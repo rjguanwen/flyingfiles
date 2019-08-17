@@ -1,4 +1,3 @@
-// 文件服务端，根据客户端请求向客户端传输数据
 package main
 
 import (
@@ -16,7 +15,7 @@ import (
 	"time"
 )
 
-var splitSize = int64(1024 * 1024 * 10) // 拆分文件大小
+var splitSize = int64(1024 * 1024 * 1) // 拆分文件大小
 var sessionCache *cache.Cache
 
 func init() {
@@ -75,7 +74,7 @@ func main() {
 }
 
 func dealRequest(con net.Conn) {
-	log.Info("=== 开始 == dealRequest ...")
+	//log.Info("=== 开始 == dealRequest ...")
 	defer func() { //异常处理
 		err := recover()
 		if err != nil {
@@ -140,7 +139,7 @@ func dealRequest(con net.Conn) {
 	} else if reqFlagInt == myutil.Request4SplitFile { // 如果是对子数据文件请求
 		// 获取请求包内容并核对令牌
 		splitFileReqPkg := string(data[1:length])
-		log.Info("客户端发送过来的请求包：", splitFileReqPkg)
+		//log.Info("客户端发送过来的请求包：", splitFileReqPkg)
 		sfrp := myutil.StringToSFRP(splitFileReqPkg)
 		rSessionId := sfrp.SessionID
 		sessionContentGet, found := sessionCache.Get(rSessionId)
@@ -186,7 +185,7 @@ func dealRequest(con net.Conn) {
 		log.Error("请求类型错误，reqFlagInt:", reqFlagInt)
 		return
 	}
-	log.Info("=== 正常结束 == dealRequest !!!")
+	//log.Info("=== 正常结束 == dealRequest !!!")
 }
 
 // 将客户端请求的数据文件片段传送到客户端

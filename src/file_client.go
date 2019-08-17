@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
 	log "github.com/cihub/seelog"
 	. "github.com/rjguanwen/flyingfiles/src/myfileutils"
 	"github.com/rjguanwen/flyingfiles/src/myutil"
@@ -66,12 +68,12 @@ func main() {
 		}
 	}
 
-	//fmt.Printf("请输入服务端IP: ")
-	//reader := bufio.NewReader(os.Stdin)
-	//ipdata, _, _ := reader.ReadLine()
-	//
-	//host = string(ipdata)
-	host = "127.0.0.1"
+	fmt.Printf("请输入服务端IP: ")
+	reader := bufio.NewReader(os.Stdin)
+	ipdata, _, _ := reader.ReadLine()
+
+	host = string(ipdata)
+	//host = "127.0.0.1"
 	remote = host + ":" + port
 	beginTime := time.Now().Unix()
 
