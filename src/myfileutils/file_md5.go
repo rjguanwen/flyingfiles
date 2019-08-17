@@ -3,7 +3,7 @@ package myfileutils
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"github.com/rjguanwen/flyingfiles/src/fflog"
+	log "github.com/cihub/seelog"
 	"io"
 	"os"
 )
@@ -12,13 +12,13 @@ import (
 func HashFileMd5(filePath string) (md5Str string, err error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		fflog.Errorf("计算文件md5码过程中，文件打开错误%s: %v", filePath, err)
+		log.Errorf("计算文件md5码过程中，文件打开错误%s: %v", filePath, err)
 		return "", err
 	}
 	defer file.Close()
 	hash := md5.New()
 	if _, err = io.Copy(hash, file); err != nil {
-		fflog.Errorf("计算文件md5码过程错误%s: %v", filePath, err)
+		log.Errorf("计算文件md5码过程错误%s: %v", filePath, err)
 		return "", err
 	}
 	hashInBytes := hash.Sum(nil)[:16]

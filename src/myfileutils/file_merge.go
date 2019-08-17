@@ -3,7 +3,7 @@ package myfileutils
 import (
 	"bufio"
 	"fmt"
-	"github.com/rjguanwen/flyingfiles/src/fflog"
+	log "github.com/cihub/seelog"
 	"io"
 	"os"
 	"path"
@@ -12,15 +12,15 @@ import (
 
 // 将子文件合并为数据文件
 // 先进行子文件校验，然后合并，最后对合并后的数据文件校验
-func MergeSplitFileAndCheck(fileName string, fsi FileSummaryInfo) (isOK bool, err error) {
+func MergeSplitFileAndCheck(fileName string, ffi FileFlyInfo, taskList []DownloadTask) (isOK bool, err error) {
 	// 校验子文件下载是否完整
-	isOK, err = checkSplitFiles(fileName, fsi) //首先校验子文件下载是否OK
+	isOK, err = checkSplitFiles(fileName, ffi, taskList) //首先校验子文件下载是否OK
 	if !isOK {
-		fflog.Errorln("子文件校验出错：", err)
+		log.Error("子文件校验出错：", err)
 		return
 	}
 	// 组织子文件路径列表，完成合并
-	splitFileNum := fsi.SplitFiles
+	splitFileNum := ffi.SplitFiles
 	var splitFilePaths []string = make([]string, splitFileNum)              // 子文件路径列表
 	splitFileDir := path.Join(AbsPath("/file_store/in/"), fileName+"_info") // 获取子文件夹绝对路径
 	for i := 0; i < int(splitFileNum); i++ {
@@ -29,42 +29,50 @@ func MergeSplitFileAndCheck(fileName string, fsi FileSummaryInfo) (isOK bool, er
 	targetFilePath := path.Join(AbsPath("/file_store/in/"), fileName)
 	isOK, err = fileMerge(splitFilePaths, targetFilePath, false)
 	if !isOK {
-		fflog.Errorln("子文件校验出错：", err)
+		log.Error("子文件合并出错：", err)
 		return
 	}
 	// 校验目标文件MD5
 	targetFileMD5, err := HashFileMd5(targetFilePath)
-	if targetFileMD5 == fsi.MD5 {
+	if targetFileMD5 == ffi.MD5 {
 		isOK = true
-		fflog.Infof("数据文件（%s）校验通过！\n", fileName)
+		log.Infof("数据文件（%s）校验通过！", fileName)
 	}
 	return
 }
 
-// 校验子文件，通过MD5码进行校验
-func checkSplitFiles(fileName string, fsi FileSummaryInfo) (isOK bool, err error) {
-	splitFileNum := fsi.SplitFiles
-	// 获取文件摘要信息
+// 校验子文件，通过大小进行校验
+func checkSplitFiles(fileName string, ffi FileFlyInfo, taskList []DownloadTask) (isOK bool, err error) {
+	splitFileNum := ffi.SplitFiles
+	// 获取文件大小
 	splitFileDir := path.Join(AbsPath("/file_store/in/"), fileName+"_info") // 获取子文件夹路径
-	var sFileMD5s []string = make([]string, splitFileNum)
-	// 获取子文件 MD5 码
+	var sFileSizes []int64 = make([]int64, splitFileNum)
+	// 获取子文件大小
 	for i := 0; i < int(splitFileNum); i++ {
 		sFilePath := path.Join(splitFileDir, fileName+"_"+strconv.Itoa(i))
-		sFileMD5s[i], err = HashFileMd5(sFilePath) // 获取子文件 MD5 码
+		fl, err := os.OpenFile(sFilePath, os.O_RDWR, 0666)
 		if err != nil {
-			fflog.Errorln("Get sFile MD5 Error:", err)
-			return false, err
+			log.Error("Read File Error:", err)
+			break
 		}
+		stat, err := fl.Stat() //获取文件状态
+		if err != nil {
+			log.Error("File Stat Error:", err)
+			break
+		}
+		// 获取文件大小
+		fileSize := stat.Size()
+		sFileSizes[i] = fileSize
+		fl.Close()
 	}
-	tmpFlag := true
-	targetSplitFileMD5s := fsi.SplitFilesMD5
-	for i, tmpMD5 := range targetSplitFileMD5s { // 循环比较每个子文件的MD5码是否一致
-		if tmpMD5 != sFileMD5s[i] {
-			tmpFlag = false
+	isSameSize := true
+	for i, tmpTask := range taskList { // 循环比较每个子文件的大小否一致
+		if tmpTask.End-tmpTask.Begin != sFileSizes[i] {
+			isSameSize = false
 			break
 		}
 	}
-	if tmpFlag {
+	if isSameSize {
 		isOK = true
 	}
 	return isOK, nil
@@ -75,7 +83,7 @@ func fileMerge(sourceFileList []string, targetFilePath string, removeSourceFiles
 	// 打开目标文件
 	targetFile, err := os.OpenFile(targetFilePath, os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
-		fflog.Errorf("Can not open file %s: %v", targetFilePath, err)
+		log.Error("Can not open file %s: %v", targetFilePath, err)
 		return false, err
 	}
 	bWriter := bufio.NewWriter(targetFile)
@@ -106,7 +114,7 @@ func fileMerge(sourceFileList []string, targetFilePath string, removeSourceFiles
 			err := os.Remove(sfPath)
 			if err != nil {
 				//如果删除失败则输出错误详细信息
-				fflog.Errorf("文件合并完成，删除文件时发生错误：%s: %v", sfPath, err)
+				log.Error("文件合并完成，删除文件时发生错误：%s: %v", sfPath, err)
 				return false, err
 			}
 		}

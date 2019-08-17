@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bufio"
-	"fmt"
-	"github.com/rjguanwen/flyingfiles/src/fflog"
-	"github.com/rjguanwen/flyingfiles/src/myfileutils"
+	log "github.com/cihub/seelog"
+	. "github.com/rjguanwen/flyingfiles/src/myfileutils"
 	"github.com/rjguanwen/flyingfiles/src/myutil"
 	"net"
 	"os"
@@ -14,18 +12,34 @@ import (
 	"time"
 )
 
-func init() {
-	//runtime.GOMAXPROCS(runtime.NumCPU())
-	runtime.GOMAXPROCS(4)
-}
+const (
+	prefix_debug   = "DEBUG:"
+	prefix_info    = "INFO:"
+	prefix_warning = "WARNING:"
+	prefix_error   = "ERROR:"
+)
 
 func init() {
 	// 设置逻辑处理器数量
 	runtime.GOMAXPROCS(4)
+
 }
 
 func main() {
-	//fflog.Infoln(Request4File)
+	//log.Debug(Request4File)
+	testConfig := `
+<seelog type="sync">
+	<outputs formatid="main">
+		<console/>
+	</outputs>
+	<formats>
+		<format id="main" format="%Date/%Time [%Level] %RelFile:%Line %Msg%n"/>
+	</formats>
+</seelog>`
+
+	logger, _ := log.LoggerFromConfigAsBytes([]byte(testConfig))
+	log.ReplaceLogger(logger)
+
 	var (
 		host          = "127.0.0.1"               //服务端IP
 		port          = "9090"                    //服务端端口
@@ -52,100 +66,76 @@ func main() {
 		}
 	}
 
-	fmt.Printf("请输入服务端IP: ")
-	reader := bufio.NewReader(os.Stdin)
-	ipdata, _, _ := reader.ReadLine()
-
-	host = string(ipdata)
-	//host = "127.0.0.1"
+	//fmt.Printf("请输入服务端IP: ")
+	//reader := bufio.NewReader(os.Stdin)
+	//ipdata, _, _ := reader.ReadLine()
+	//
+	//host = string(ipdata)
+	host = "127.0.0.1"
 	remote = host + ":" + port
 	beginTime := time.Now().Unix()
 
 	// 请求与服务器连接
 	con, err := net.Dial("tcp", remote)
 	if err != nil {
-		fflog.Infoln("服务器连接失败.")
+		log.Debug("服务器连接失败.")
 		os.Exit(-1)
 		return
 	}
-	//fflog.Infoln("连接已建立.文件请求发送中...")
-	//fflog.Infoln("客户端请求包：", strconv.Itoa(myutil.Request4File)+fileName)
+	//log.Debug("连接已建立.文件请求发送中...")
+	//log.Debug("客户端请求包：", strconv.Itoa(myutil.Request4File)+fileName)
 	in, err := con.Write([]byte(strconv.Itoa(myutil.Request4File) + fileName)) //向服务器发送数据文件请求
 	if err != nil {
-		fmt.Printf("向服务器发送数据错误: %d\n", in)
+		log.Errorf("向服务器发送数据错误: %d", in)
 		os.Exit(0)
 	}
 	var msg = make([]byte, 1024*100) //创建读取服务端信息的切片
 	lengthh, err := con.Read(msg)    //获取服务器返回信息
 	if err != nil {
-		fmt.Printf("读取服务器数据错误.\n", lengthh)
+		log.Errorf("读取服务器数据错误.", lengthh)
 		os.Exit(0)
 	}
 	// 关闭链接
 	con.Close()
-	//fflog.Infoln("接收到的数据长度==>", lengthh)
+	//log.Debug("接收到的数据长度==>", lengthh)
 	recvFlag := string(msg[0:1])
-	//fflog.Infoln("==>", string(msg[:]))
+	//log.Debug("==>", string(msg[:]))
 	if recvFlag == strconv.Itoa(myutil.FileReady) {
 		// 文件已就绪
 		sessionId := string(msg[1 : myutil.SessionIdLength+1])
-		//fflog.Infoln("sessionId===>>", sessionId)
+		//log.Debug("sessionId===>>", sessionId)
 		recvData := string(msg[myutil.SessionIdLength+1 : lengthh])
-		//fflog.Infoln("服务端返回信息：", recvData)
+		//log.Debug("服务端返回信息：", recvData)
 		//解析返回的数据,将其转化为文件摘要信息对象
-		fsi := myfileutils.StringToFSI(recvData)
-		//fileSize := fsi.Size
-		//md5 := fsi.MD5
-		splitFils := fsi.SplitFiles
-		//splitFilesMD5 := fsi.SplitFilesMD5
+		ffi := StringToFFI(recvData)
+		fileSize := ffi.Size
+		//md5 := ffi.MD5
+		splitFils := ffi.SplitFiles
+		splitFileSize := ffi.SplitFileSize
 		// 将文件摘要信息写入摘要文件
-		myfileutils.WriteFileConfigYAML(fileName, fsi)
-		// ------------------------------ 方法一 ------------------------------
-		// 下面的写法会导致大文件一次创建了太多的协程，生成了太多的链接，超出系统限制的情况时有发生，修改之
-		////为每个子文件创建一个协程
-		//var wg sync.WaitGroup
-		//wg.Add(splitFils)
-		//for i := 0; i < splitFils; i++ {
-		//	// 下载每一个子文件
-		//	go downloadSplitFile(remote, fileName, i, sessionId, &wg) // 下载子文件的协程
-		//}
-		//wg.Wait()
-		// ------------------------------ 方法二 ------------------------------
-		// 下面的写法按批次顺序执行，存在某批次中的某个协程挂起或运行缓慢，导致后续批次无法继续执行的风险,修改之
-		//// 每次最多起10个协程，如果子文件个数超过10个，则按批次进行
-		//maxRoutineNum := 10
-		//if splitFils <= maxRoutineNum { // 如果子文件数小于最大协程数
-		//	var wg sync.WaitGroup
-		//	wg.Add(splitFils)
-		//	for i := 0; i < splitFils; i++ {
-		//		// 下载每一个子文件
-		//		go downloadSplitFile(remote, fileName, i, sessionId, &wg) // 下载子文件的协程
-		//	}
-		//	wg.Wait()
-		//} else {
-		//	splitFilesGroups := splitFils / maxRoutineNum
-		//	if splitFils%maxRoutineNum != 0 {
-		//		splitFilesGroups += 1
-		//	}
-		//	for i := 0; i < splitFilesGroups; i++ { //循环处理每个组
-		//		var thisLoopNum int // 本次循环需要处理的子文件个数
-		//		var wg sync.WaitGroup
-		//		if i == splitFilesGroups-1 {
-		//			thisLoopNum = splitFils % maxRoutineNum
-		//		} else {
-		//			thisLoopNum = maxRoutineNum
-		//		}
-		//		wg.Add(thisLoopNum)
-		//		for j := 0; j < thisLoopNum; j++ {
-		//			fileSeq := i*maxRoutineNum + j
-		//			// 下载每一个子文件
-		//			go downloadSplitFile(remote, fileName, fileSeq, sessionId, &wg) // 下载子文件的协程
-		//		}
-		//		wg.Wait() // 通过 Wait，控制分批执行
-		//	}
-		//}
-		// ------------------------------ 方法三 ------------------------------
-		// 采用工作池的方式重写
+		WriteFileConfigYAML(fileName, ffi)
+
+		// 组织子文件开始结束位置数组，方便下载
+		var sFilesTaskList = make([]DownloadTask, splitFils)
+		var begin, end int64
+		// 计算每个子文件的开始与结束位置
+		for i := 0; i < splitFils; i++ {
+			begin = splitFileSize * int64(i)
+			if i != splitFils-1 {
+				end = splitFileSize * (int64(i) + 1)
+			} else {
+				end = fileSize
+			}
+			tmpDownloadTask := DownloadTask{
+				FileName: fileName,
+				Seq:      i,
+				Begin:    begin,
+				End:      end,
+			}
+			sFilesTaskList[i] = tmpDownloadTask
+		}
+
+		// 采用工作池的方式开展下载任务
 		// - 将每个子文件下载看做一个任务，放入任务管道
 		// - 根据指定的最大协程数创建工作协程
 		// - 每个工作协程到循环到任务管道里面获取任务并处理之（下载子文件）
@@ -156,13 +146,16 @@ func main() {
 		if maxRoutineNum > splitFils { // 如果子文件个数小于最大协程数，则修改最大协程数为子文件个数
 			maxRoutineNum = splitFils
 		}
-		taskch := make(chan int, 20)             //任务管道
+		taskch := make(chan DownloadTask, 20)    //任务管道
 		resch := make(chan string, 100)          //结果信号管道
 		exitch := make(chan bool, maxRoutineNum) //退出信号管道
 		// 向任务管道中写入需要下载的子文件编号，每个编号对应一个下载任务
 		go func() {
-			for i := 0; i < splitFils; i++ {
-				taskch <- i
+			//for i := 0; i < splitFils; i++ {
+			//	taskch <- i
+			//}
+			for _, task := range sFilesTaskList {
+				taskch <- task
 			}
 			close(taskch)
 		}()
@@ -181,17 +174,17 @@ func main() {
 
 		//打印协程执行信息，本质是通过resch与上面的close(resch)配合来等待作业协程完成工作
 		for res := range resch {
-			fflog.Debugln("子文件下载协程====>> ", res)
+			log.Debug("子文件下载协程====>> ", res)
 		}
 		//------------------------------ 方法结束 ------------------------------
 
 		// 合并文件并完成校验
-		isOK, err := myfileutils.MergeSplitFileAndCheck(fileName, fsi)
+		isOK, err := MergeSplitFileAndCheck(fileName, ffi, sFilesTaskList)
 		if err != nil {
-			fflog.Errorf("文件合并出现问题（%s）：%v \n", fileName, err)
+			log.Errorf("文件合并出现问题（%s）：%v ", fileName, err)
 		}
 		if isOK {
-			fflog.Infof("文件下载成功完成：%s \n", fileName)
+			log.Debugf("文件下载成功完成：%s ", fileName)
 		}
 	} else if recvFlag == strconv.Itoa(myutil.FileNotFound) {
 		// 文件未找到
@@ -206,27 +199,30 @@ func main() {
 	endTime := time.Now().Unix()
 
 	tot := endTime - beginTime
-	fmt.Printf("总计耗时：%d 分 %d 秒 \n", tot/60, tot%60)
-	fflog.Infoln("---", mergeFileName)
+	log.Infof("总计耗时：%d 分 %d 秒 ", tot/60, tot%60)
+	log.Debug("---", mergeFileName)
 
 }
 
 // 下载任务
-func doDownloadTasks(remote string, fileName string, fileSEQ int, sessionId string, taskch chan int, resch chan string, exitch chan bool) {
+func doDownloadTasks(remote string, fileName string, fileSEQ int, sessionId string, taskch chan DownloadTask, resch chan string, exitch chan bool) {
 	defer func() { //异常处理
 		err := recover()
 		if err != nil {
-			fflog.Errorf("downloadSplitFile（%s: %d） error: %v \n", fileName, fileSEQ, err)
+			log.Errorf("downloadSplitFile（%s: %d） error: %v ", fileName, fileSEQ, err)
 			return
 		}
 	}()
-	for i := range taskch { //  处理任务
-		isSuccess := downloadSplitFile(remote, fileName, i, sessionId)
+	for task := range taskch { //  处理任务
+		seq := task.Seq
+		begin := task.Begin
+		end := task.End
+		isSuccess := downloadSplitFile(remote, fileName, seq, begin, end, sessionId)
 		var result string
 		if isSuccess {
-			result = "==>" + fileName + ": " + strconv.Itoa(i) + "<== has download."
+			result = "==>" + fileName + ": " + strconv.Itoa(seq) + "<== has download."
 		} else {
-			result = "==>" + fileName + ": " + strconv.Itoa(i) + "<== download error!!!"
+			result = "==>" + fileName + ": " + strconv.Itoa(seq) + "<== download error!!!"
 		}
 		resch <- result
 	}
@@ -234,55 +230,51 @@ func doDownloadTasks(remote string, fileName string, fileSEQ int, sessionId stri
 }
 
 // 请求子数据文件
-func downloadSplitFile(remote string, fileName string, fileSEQ int, sessionId string) (isSuccess bool) {
-	//func downloadSplitFile(remote string, fileName string, fileSEQ int, sessionId string, wg *sync.WaitGroup) (isSuccess bool){
-	//	defer wg.Done()
+func downloadSplitFile(remote string, fileName string, fileSEQ int, begin int64, end int64, sessionId string) (isSuccess bool) {
 
 	var data = make([]byte, 1024*100) //创建读取服务端信息的切片
 
 	// 请求与服务器连接
 	con, err := net.Dial("tcp", remote)
 	if err != nil {
-		fflog.Errorf("子文件（%d）请求服务器连接失败！\n", fileSEQ)
+		log.Errorf("子文件（%d）请求服务器连接失败！", fileSEQ)
 		return
 	}
 	defer con.Close()
-	fflog.Infof("连接已建立.子数据文件（%d）请求发送中...\n", fileSEQ)
+	log.Debugf("连接已建立.子数据文件（%d）请求发送中...", fileSEQ)
 
 	// 构建请求包，并发送到服务端
 	sfrp := myutil.SplitFileRequestPackage{
 		SessionID:    sessionId,
 		FileName:     fileName,
 		SplitFileSEQ: fileSEQ,
+		Begin:        begin,
+		End:          end,
 	}
-
-	//fflog.Infoln("子文件数据请求=====>>", strconv.Itoa(myutil.Request4SplitFile)+sfrp.ToString())
 
 	_, err = con.Write([]byte(strconv.Itoa(myutil.Request4SplitFile) + sfrp.ToString())) //向服务器发送数据文件请求
 	if err != nil {
-		fflog.Errorf("子文件（%d）向服务器发送数据请求失败： %v \n", fileSEQ, err)
+		log.Errorf("子文件（%d）向服务器发送数据请求失败： %v ", fileSEQ, err)
 		return
 	}
-	//fflog.Debugln("开始创建子文件...: ", fileSEQ)
+	//log.Debug("开始创建子文件...: ", fileSEQ)
 	// 创建子文件
-	tmpFileDir := path.Join(myfileutils.AbsPath("file_store/in/"), fileName+"_info")
-	if !myfileutils.IsFileExist(tmpFileDir) { // 如果目录不存在，则创建
+	tmpFileDir := path.Join(AbsPath("file_store/in/"), fileName+"_info")
+	if !IsFileExist(tmpFileDir) { // 如果目录不存在，则创建
 		err = os.MkdirAll(tmpFileDir, os.ModePerm) // 创建子文件夹
 		if err != nil {
-			fflog.Errorln("MkDir Error:", err)
+			log.Error("MkDir Error:", err)
 			return
 		}
 	}
 	tmpFilePath := path.Join(tmpFileDir, fileName+"_"+strconv.Itoa(fileSEQ)) // 子文件路径
 	tmpFile, err := os.Create(tmpFilePath)                                   // 创建子文件
 	if err != nil {
-		fflog.Errorln("子文件创建错误:", err)
+		log.Error("子文件创建错误:", err)
 		return
 	}
 	defer tmpFile.Close()
 
-	//fflog.Debugln("开始子文件数据接收...: ", fileSEQ)
-	//overFlag, overFlagLength := myutil.GetSplitFileOverFlag(sessionId) // 子文件传输完成标志
 	var isRespHeadRecived = false // 响应头是否已收到
 
 	var respFlagInt int
@@ -294,40 +286,24 @@ func downloadSplitFile(remote string, fileName string, fileSEQ int, sessionId st
 	for { // 循环接收服务端发送回的数据
 		lengthh, err := con.Read(data) //获取服务器返回信息
 		if err != nil {
-			fflog.Infoln("读取服务器数据长度：", lengthh)
-			fflog.Errorln("读取服务器数据错误：", err)
+			log.Debug("读取服务器数据长度：", lengthh)
+			log.Error("读取服务器数据错误：", err)
 			return
 		}
 		if !isRespHeadRecived { // 如果尚未收到响应头
-			//fflog.myTrace.Printf(":: %s_%d 判断响应头开始...", fileName, fileSEQ)
-			//tmpRespHeadBytesOldLength = len(tmpRespHeadBytes) // 拼接前的 tmpRespHeadBytes 长度
 			tmpRespHeadBytes = append(tmpRespHeadBytes, data[:lengthh]...) //将接收到的数据拼接到 tmpRespHeadBytes
 			tmpRespHeadBytesNewLength := len(tmpRespHeadBytes)             // 拼接后的 tmpRespHeadBytes 长度
-			//fflog.Errorln("--------->>>>", tmpRespHeadBytes)
-			if tmpRespHeadBytesNewLength >= myfileutils.ConstRDHLength {
-				//fflog.Errorln("==========>>>>", tmpRespHeadBytes)
-				rdh := myfileutils.RespDataHeadFromBtye(tmpRespHeadBytes[:myfileutils.ConstRDHLength])
-				//fflog.myTrace.Printf(":: %s_%d 响应头---> %s", fileName, fileSEQ, rdh.ToString())
+
+			if tmpRespHeadBytesNewLength >= ConstRDHLength {
+				rdh := RespDataHeadFromBtye(tmpRespHeadBytes[:ConstRDHLength])
 				respFlagInt = int(rdh.RespFlag)
 				dataTolLength = rdh.DataLength
-				//data = data[myfileutils.ConstRDHLength-tmpRespHeadBytesOldLength: lengthh] // 剔除掉响应头
-				//lengthh = len(data)
-				//if lengthh > myfileutils.ConstRDHLength-tmpRespHeadBytesOldLength {
-				//	tmpDataBytes = data[myfileutils.ConstRDHLength-tmpRespHeadBytesOldLength: lengthh] // 本次接收数据中的内容部分
-				//}
-				tmpDataBytes = tmpRespHeadBytes[myfileutils.ConstRDHLength:tmpRespHeadBytesNewLength]
 
-				//fmt.Printf("--------（%s_%d）总长度 %d\n", fileName, fileSEQ, lengthh)
-				//fmt.Printf("--------（%s_%d）tmpOld长度 %d\n", fileName, fileSEQ, tmpRespHeadBytesOldLength)
-				//fmt.Printf("--------（%s_%d）tmpBytes长度 %d\n", fileName, fileSEQ, len(tmpDataBytes))
-				//fmt.Printf("--------（%s_%d）tmpBytes内容 %d\n", fileName, fileSEQ, tmpDataBytes)
+				tmpDataBytes = tmpRespHeadBytes[ConstRDHLength:tmpRespHeadBytesNewLength]
 
-				//fflog.myTrace.Printf(":: %s_%d -----> %d", fileName, fileSEQ, lengthh)
-				//fflog.myTrace.Printf(":: %s_%d 判断响应头已获取...", fileName, fileSEQ)
 				isRespHeadRecived = true
 			} else {
-				//fflog.myTrace.Printf(":: %s_%d 判断响应头未获取...", fileName, fileSEQ)
-				fflog.Warningln("警告：接收到的splitFile响应数据长度为：", tmpRespHeadBytesNewLength)
+				log.Debug("警告：接收到的splitFile响应数据长度为：", tmpRespHeadBytesNewLength)
 				continue
 			}
 		} else {
@@ -336,43 +312,38 @@ func downloadSplitFile(remote string, fileName string, fileSEQ int, sessionId st
 		tmpDataBytesLength := len(tmpDataBytes)
 
 		if respFlagInt == myutil.SplitFileData { // 子文件数据
-			//if fileSEQ == 13{
-			//	fflog.myTrace.Printf("%s_%d 数据开始，数据长度：\n", fileName, fileSEQ, lengthh)
-			//}
 			tmpFile.Write(tmpDataBytes[:tmpDataBytesLength]) // 向文件写入数据
 			dataHasWrote += int64(tmpDataBytesLength)
 			if dataHasWrote == dataTolLength { // 接收到的数据等于发送的数据
-				//fflog.myTrace.Printf("%s_%d 数据接收成功完成！\n", fileName, fileSEQ)
 				break
 			}
 			if dataHasWrote > dataTolLength { // 如果发送此种情况，说明有大问题了！
-				fflog.Errorf("严重错误：%s_%d 接收到的数据 >> 发送数据！\n", fileName, fileSEQ)
+				log.Errorf("严重错误：%s_%d 接收到的数据 >> 发送数据！", fileName, fileSEQ)
 				return
 			}
 		} else if respFlagInt == myutil.NoPermission { // 没有权限，一般是令牌过期或令牌为伪造
-			fflog.Errorln("没有权限，一般是令牌过期或令牌为伪造：", respFlagInt)
+			log.Error("没有权限，一般是令牌过期或令牌为伪造：", respFlagInt)
 			return
 		} else if respFlagInt == myutil.ServerError { // 服务器错误
-			fflog.Errorln("服务器错误：", respFlagInt)
+			log.Error("服务器错误：", respFlagInt)
 			return
 		} else if respFlagInt == myutil.TokenError { // 令牌校验不通过，一般为文件名或IP地址被篡改
-			fflog.Errorln("令牌校验不通过，一般为文件名或IP地址被篡改：", respFlagInt)
+			log.Error("令牌校验不通过，一般为文件名或IP地址被篡改：", respFlagInt)
 			return
 		} else if respFlagInt == myutil.RequestError { // 请求错误，请求码未知
-			fflog.Errorln("请求错误，请求码未知：", respFlagInt)
+			log.Error("请求错误，请求码未知：", respFlagInt)
 			return
 		} else if respFlagInt == myutil.SplitFileNotFound { // 所请求的子文件未找到
-			fflog.Errorln("所请求的子文件未找到：", respFlagInt)
+			log.Error("所请求的子文件未找到：", respFlagInt)
 			return
 		} else {
-			fflog.Errorln("服务器返回标志位无法识别：", respFlagInt)
+			log.Error("服务器返回标志位无法识别：", respFlagInt)
 			return
 		}
 	}
-	//fflog.myTrace.Printf("------->> %s_%d 数据接收完成并跳出 for 循环！\n", fileName, fileSEQ)
 	// 将子文件数据接收完成信息告知服务端
 	con.Write([]byte("OK!"))
-	fflog.Infoln(fileName + "-" + strconv.Itoa(fileSEQ) + " 数据接收完成！")
+	log.Debug(fileName + "-" + strconv.Itoa(fileSEQ) + " 数据接收完成！")
 	isSuccess = true
 	return
 }
